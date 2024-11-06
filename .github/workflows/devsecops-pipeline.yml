@@ -1,0 +1,92 @@
+name: DevSecOps Pipeline
+
+# The pipeline triggers on pushes and pull requests to the `main` branch.
+on:
+  push:
+    branches:
+      - main  # Runs on push to the main branch
+  pull_request:
+    branches:
+      - main  # Runs on PR to the main branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # Use an Ubuntu runner for GitHub Actions.
+
+    env:
+      SONARQUBE_URL: 'http://<SONARQUBE_SERVER_IP>:9000'  # Replace with your SonarQube IP
+      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}  # Store your SonarQube token securely in GitHub secrets
+      DOCKER_REGISTRY: 'docker.io'  # Docker registry, e.g., Docker Hub
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}  # Store Docker Hub username in secrets
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}  # Store Docker Hub password in secrets
+
+    steps:
+    # Step 1: Checkout the code
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    # Step 2: Set up JDK 17 for Java builds
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+
+    # Step 3: Set up Maven for building the project
+    - name: Set up Maven
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        maven-version: '3.8.4'
+
+    # Step 4: Install Trivy (for Docker image vulnerability scanning)
+    - name: Install Trivy
+      run: |
+        sudo apt-get install -y wget
+        wget https://github.com/aquasecurity/trivy/releases/download/v0.26.0/trivy_0.26.0_Linux-64bit.deb
+        sudo dpkg -i trivy_0.26.0_Linux-64bit.deb
+
+    # Step 5: Install OWASP Dependency Check (for SCA - Software Composition Analysis)
+    - name: Install OWASP Dependency Check
+      run: |
+        curl -L https://github.com/jeremylong/DependencyCheck/releases/download/v8.0.0/dependency-check-8.0.0-release.zip -o dependency-check.zip
+        unzip dependency-check.zip
+        sudo mv dependency-check/bin/dependency-check /usr/local/bin
+
+    # Step 6: Build the application with Maven
+    - name: Build with Maven
+      run: mvn clean install
+
+    # Step 7: Run OWASP Dependency Check (SCA)
+    - name: Run OWASP Dependency Check (SCA)
+      run: |
+        dependency-check --project "Petclinic" --scan . --format HTML --out ./dependency-check-report
+
+    # Step 8: Run SonarQube scan (SAST)
+    - name: Run SonarQube scan (SAST)
+      run: |
+        mvn sonar:sonar -Dsonar.host.url=$SONARQUBE_URL -Dsonar.login=$SONARQUBE_TOKEN
+
+    # Step 9: Build Docker Image
+    - name: Build Docker Image
+      run: |
+        docker build -t $DOCKER_REGISTRY/<YOUR_USERNAME>/<YOUR_REPO>:latest .
+
+    # Step 10: Push Docker Image to Docker Hub
+    - name: Push Docker Image
+      run: |
+        echo $DOCKER_PASSWORD | docker login $DOCKER_REGISTRY -u $DOCKER_USERNAME --password-stdin
+        docker push $DOCKER_REGISTRY/<YOUR_USERNAME>/<YOUR_REPO>:latest
+
+    # Step 11: Trivy Scan Docker Image for vulnerabilities
+    - name: Trivy Scan Docker Image
+      run: |
+        trivy image --exit-code 1 --severity HIGH,CRITICAL $DOCKER_REGISTRY/<YOUR_USERNAME>/<YOUR_REPO>:latest
+
+    # Step 12: Deploy Docker Image to EC2
+    - name: Deploy Docker Image to EC2
+      run: |
+        ssh -i /path/to/your/private-key.pem ec2-user@<EC2_INSTANCE_IP> \
+          'docker pull $DOCKER_REGISTRY/<YOUR_USERNAME>/<YOUR_REPO>:latest && \
+          docker run -d -p 8081:8080 $DOCKER_REGISTRY/<YOUR_USERNAME>/<YOUR_REPO>:latest'
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}  # Store EC2 private key in GitHub secrets
