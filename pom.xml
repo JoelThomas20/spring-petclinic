@@ -430,6 +430,31 @@
                 </lifecycleMappingMetadata>
               </configuration>
             </plugin>
+            <plugin>
+      <groupId>org.owasp</groupId>
+      <artifactId>dependency-check-maven</artifactId>
+      <version>8.1.2</version> <!-- Use the latest stable version -->
+      <executions>
+        <execution>
+          <id>dependency-check</id>
+  add this at the last before plugins and build
+          <goals>
+            <goal>check</goal>
+          </goals>
+          <phase>verify</phase> <!-- The plugin runs during the 'verify' phase -->
+          <configuration>
+            <format>HTML</format> <!-- Format of the report, can be HTML, XML, or JSON -->
+            <outputDirectory>${project.build.directory}/dependency-check-report</outputDirectory> <!-- Directory to store the report -->
+            <scanSet>
+              <files>
+                <file>${project.basedir}/pom.xml</file> <!-- Scan the POM file for dependencies -->
+              </files>
+            </scanSet>
+          </configuration>
+        </execution>
+      </executions>
+    </plugin>
+  </plugins>
           </plugins>
         </pluginManagement>
       </build>
